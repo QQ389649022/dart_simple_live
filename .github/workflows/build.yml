@@ -3,13 +3,17 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # 当你推送以 v 开头的标签时触发，如 v1.0.0
-  workflow_dispatch: # 允许你手动点击按钮触发编译
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # 设置全局默认运行目录为 simple_live_app
+    defaults:
+      run:
+        working-directory: ./simple_live_app
     strategy:
       matrix:
         include:
@@ -25,8 +29,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive # 确保拉取了所有核心库依赖
 
-      - name: Setup Java (for Android)
+      - name: Setup Java
         if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-java@v4
         with:
@@ -37,7 +43,8 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          # 根据项目 pubspec.yaml 建议使用最新稳定版或指定版本
+          # 如果编译依然报错，可以尝试指定项目最近使用的版本：
+          # flutter-version: '3.38.3' 
 
       - name: Install dependencies
         run: flutter pub get
@@ -45,16 +52,80 @@ jobs:
       - name: Build Project
         run: ${{ matrix.build_cmd }}
 
-      # 针对 Windows 平台，将编译产物打包成 ZIP
       - name: Package Windows Release
         if: matrix.os == 'windows-latest'
+        # Windows 路径在脚本中需要特殊处理
         run: |
-          Compress-Archive -Path "${{ matrix.artifact_path }}/*" -DestinationPath "simple_live_windows.zip"
+          Compress-Archive -Path "${{ github.workspace }}/simple_live_app/${{ matrix.artifact_path }}/*" -DestinationPath "${{ github.workspace }}/simple_live_windows.zip"
 
-      # 上传编译好的文件到 GitHub Actions 产物中
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-binaries
           path: |
-            ${{ matrix.os == 'windows-latest' && 'simple_live_windows.zip' || matrix.artifact_path }}
+            ${{ github.workspace }}/${{ matrix.os == 'windows-latest' && 'simple_live_windows.zip' || 'simple_live_app/' + matrix.artifact_path }}name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # 设置全局默认运行目录为 simple_live_app
+    defaults:
+      run:
+        working-directory: ./simple_live_app
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            output_name: android-release.apk
+            build_cmd: flutter build apk --release
+            artifact_path: build/app/outputs/flutter-apk/app-release.apk
+          - os: windows-latest
+            output_name: windows-release.zip
+            build_cmd: flutter build windows --release
+            artifact_path: build/windows/runner/Release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # 确保拉取了所有核心库依赖
+
+      - name: Setup Java
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          # 如果编译依然报错，可以尝试指定项目最近使用的版本：
+          # flutter-version: '3.38.3' 
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Project
+        run: ${{ matrix.build_cmd }}
+
+      - name: Package Windows Release
+        if: matrix.os == 'windows-latest'
+        # Windows 路径在脚本中需要特殊处理
+        run: |
+          Compress-Archive -Path "${{ github.workspace }}/simple_live_app/${{ matrix.artifact_path }}/*" -DestinationPath "${{ github.workspace }}/simple_live_windows.zip"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-binaries
+          path: |
+            ${{ github.workspace }}/${{ matrix.os == 'windows-latest' && 'simple_live_windows.zip' || 'simple_live_app/' + matrix.artifact_path }}
