@@ -1,131 +1,51 @@
 name: Build and Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+  workflow_dispatch: # 方便手动触发
 
 jobs:
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # 设置全局默认运行目录为 simple_live_app
-    defaults:
-      run:
-        working-directory: ./simple_live_app
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            output_name: android-release.apk
-            build_cmd: flutter build apk --release
-            artifact_path: build/app/outputs/flutter-apk/app-release.apk
+          # 我们先集中精力修好 Windows 端的编译
           - os: windows-latest
-            output_name: windows-release.zip
             build_cmd: flutter build windows --release
-            artifact_path: build/windows/runner/Release
+            artifact_path: simple_live_app/build/windows/runner/Release
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive # 确保拉取了所有核心库依赖
+          submodules: recursive # 必须递归拉取，否则核心库可能缺失
 
-      - name: Setup Java
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
+      # 解决 Windows 路径过长导致的编译失败
+      - name: Enable long paths
+        run: git config --global core.longpaths true
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          # 如果编译依然报错，可以尝试指定项目最近使用的版本：
-          # flutter-version: '3.38.3' 
+          flutter-version: '3.24.0' # 强制指定一个较新的稳定版本
 
       - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Project
-        run: ${{ matrix.build_cmd }}
-
-      - name: Package Windows Release
-        if: matrix.os == 'windows-latest'
-        # Windows 路径在脚本中需要特殊处理
-        run: |
-          Compress-Archive -Path "${{ github.workspace }}/simple_live_app/${{ matrix.artifact_path }}/*" -DestinationPath "${{ github.workspace }}/simple_live_windows.zip"
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.os }}-binaries
-          path: |
-            ${{ github.workspace }}/${{ matrix.os == 'windows-latest' && 'simple_live_windows.zip' || 'simple_live_app/' + matrix.artifact_path }}name: Build and Release
-
-on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-
-jobs:
-  build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    # 设置全局默认运行目录为 simple_live_app
-    defaults:
-      run:
         working-directory: ./simple_live_app
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            output_name: android-release.apk
-            build_cmd: flutter build apk --release
-            artifact_path: build/app/outputs/flutter-apk/app-release.apk
-          - os: windows-latest
-            output_name: windows-release.zip
-            build_cmd: flutter build windows --release
-            artifact_path: build/windows/runner/Release
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive # 确保拉取了所有核心库依赖
-
-      - name: Setup Java
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          # 如果编译依然报错，可以尝试指定项目最近使用的版本：
-          # flutter-version: '3.38.3' 
-
-      - name: Install dependencies
         run: flutter pub get
 
       - name: Build Project
+        working-directory: ./simple_live_app
         run: ${{ matrix.build_cmd }}
 
       - name: Package Windows Release
         if: matrix.os == 'windows-latest'
-        # Windows 路径在脚本中需要特殊处理
         run: |
-          Compress-Archive -Path "${{ github.workspace }}/simple_live_app/${{ matrix.artifact_path }}/*" -DestinationPath "${{ github.workspace }}/simple_live_windows.zip"
+          Compress-Archive -Path "${{ github.workspace }}/${{ matrix.artifact_path }}/*" -DestinationPath "${{ github.workspace }}/simple_live_windows.zip"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-binaries
-          path: |
-            ${{ github.workspace }}/${{ matrix.os == 'windows-latest' && 'simple_live_windows.zip' || 'simple_live_app/' + matrix.artifact_path }}
+          name: windows-release
+          path: simple_live_windows.zip
